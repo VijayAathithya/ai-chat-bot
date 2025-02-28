@@ -18,63 +18,67 @@ function App() {
       response: "I am a chatbot, ask me anything.",
     },
   ]);
-  let [loading, setLoading] = useState(false);
-
+  const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [response]);
 
-  // Clean Markdown Syntax
+  useEffect(() => {
+    if (!hasFetched.current) {
+      setResponse([
+        {
+          prompt: "Hello, how can I help you today?",
+          response: "I am a chatbot, ask me anything.",
+        },
+      ]);
+      hasFetched.current = true;
+    }
+  }, []);
+
+  // Function to clean Markdown formatting from AI response
   function cleanMarkdown(text) {
     return text
-      .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold syntax
-      .replace(/\*(.*?)\*/g, "$1") // Remove italic syntax
-      .replace(/~(.*?)~/g, "$1") // Remove strikethrough syntax
-      .replace(/`(.*?)`/g, "$1") // Remove inline code syntax
-      .replace(/\[(.*?)\]\((.*?)\)/g, "$1") // Remove links
-      .replace(/^\s*[-*+]\s+/gm, "") // Remove bullet points
-      .replace(/^#+\s+/gm, "") // Remove headers (e.g., # Header)
-      .replace(/\n{2,}/g, "\n"); // Remove extra new lines
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/~(.*?)~/g, "$1")
+      .replace(/`(.*?)`/g, "$1")
+      .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+      .replace(/^\s*[-*+]\s+/gm, "")
+      .replace(/^#+\s+/gm, "")
+      .replace(/\n{2,}/g, "\n");
   }
 
   async function fetchChatResponseFromGemini() {
-    if (!prompt.trim()) return; // Prevent sending empty prompts
+    if (!prompt.trim()) return; // Prevent empty messages
     setLoading(true);
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
       const result = await model.generateContent(prompt);
-      const rawResponse = await result.response.text(); // Await the text() promise
+      const rawResponse = await result.response.text();
       const cleanedResponse = cleanMarkdown(rawResponse);
 
-      const newResponse = [...response, { prompt, response: cleanedResponse }];
-      setResponse(newResponse);
-      setPrompt(""); // Clear input after submission
+      setResponse((prev) => [...prev, { prompt, response: cleanedResponse }]);
+      setPrompt("");
     } catch (error) {
       console.error("Error fetching response:", error);
+      setResponse((prev) => [...prev, { prompt, response: "⚠️ Error: Unable to fetch response." }]);
     }
 
     setLoading(false);
   }
-
-  useEffect(() => {
-    setResponse([
-      {
-        prompt: "Hello, how can I help you today?",
-        response: "I am a chatbot, ask me anything.",
-      },
-    ]);
-  }, []);
 
   return (
     <>
       <h1 className="heading">AI Chat Bot</h1>
       <div className="chatbot_container">
         <div className="chatbot_response_container" aria-live="polite">
-          {response?.map((res, index) => (
+          {response.map((res, index) => (
             <div key={index} className="response">
               <p className="chatbot_prompt">{res.prompt}</p>
               <p className="chatbot_response">{res.response}</p>
@@ -99,7 +103,7 @@ function App() {
           <input
             type="text"
             name="input"
-            placeholder="Enter your questions"
+            placeholder="Enter your question..."
             className="input"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -110,7 +114,11 @@ function App() {
               }
             }}
           />
-          <button type="button" onClick={fetchChatResponseFromGemini}>
+          <button 
+            type="button" 
+            onClick={fetchChatResponseFromGemini} 
+            disabled={!prompt.trim()}
+          >
             Submit
           </button>
         </div>
