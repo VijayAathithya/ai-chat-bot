@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import "./App.css";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SyncLoader } from "react-spinners";
@@ -11,72 +11,77 @@ const override = {
 
 function App() {
   const apiKey = import.meta.env.VITE_API_GEMINI_KEY;
-
-  // store data use state hook
-  // destructuring the useState into prompt and setPrompt
-  // prompt is the input from the user
-  // setPrompt is the function that used to update the prompt
   const [prompt, setPrompt] = useState("");
-
-  // store the response from the user and show on screen using useState
-  // array of object is used to store the prompt and response
   const [response, setResponse] = useState([
     {
       prompt: "Hello, how can I help you today?",
       response: "I am a chatbot, ask me anything.",
     },
   ]);
-
   let [loading, setLoading] = useState(false);
 
-  async function fetchChatResponseFromGemini() {
-    setLoading(true);
-    // create an instance of the GoogleGenerativeAI
-    const genAI = new GoogleGenerativeAI(apiKey);
-    // we have selected the model "gemini-1.5-flash"
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const chatEndRef = useRef(null);
 
-    // we have given the prompt to the model and it will generate the response
-    const result = await model.generateContent(prompt);
-    // we will get the response from the model
-    // console.log(result.response.text());
-    // ... spread operator is used to copy the previous response and add the new response
-    const newResponse = [
-      ...response,
-      { prompt: prompt, response: result.response.text() },
-    ]
-    setResponse(newResponse);
-    setPrompt("");
-    setLoading(false);
-    // save the response in the local storage
-    localStorage.setItem('chatbotResponse', JSON.stringify(newResponse));
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [response]);
+
+  // Clean Markdown Syntax
+  function cleanMarkdown(text) {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold syntax
+      .replace(/\*(.*?)\*/g, "$1") // Remove italic syntax
+      .replace(/~(.*?)~/g, "$1") // Remove strikethrough syntax
+      .replace(/`(.*?)`/g, "$1") // Remove inline code syntax
+      .replace(/\[(.*?)\]\((.*?)\)/g, "$1") // Remove links
+      .replace(/^\s*[-*+]\s+/gm, "") // Remove bullet points
+      .replace(/^#+\s+/gm, "") // Remove headers (e.g., # Header)
+      .replace(/\n{2,}/g, "\n"); // Remove extra new lines
   }
 
+  async function fetchChatResponseFromGemini() {
+    if (!prompt.trim()) return; // Prevent sending empty prompts
+    setLoading(true);
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  useEffect(()=>{
-  // get the response from the local storage
-   const data =  localStorage.getItem('chatbotResponse');
-    if(data){
-      setResponse(JSON.parse(data));
+    try {
+      const result = await model.generateContent(prompt);
+      const rawResponse = await result.response.text(); // Await the text() promise
+      const cleanedResponse = cleanMarkdown(rawResponse);
+
+      const newResponse = [...response, { prompt, response: cleanedResponse }];
+      setResponse(newResponse);
+      setPrompt(""); // Clear input after submission
+    } catch (error) {
+      console.error("Error fetching response:", error);
     }
-  },[])
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    setResponse([
+      {
+        prompt: "Hello, how can I help you today?",
+        response: "I am a chatbot, ask me anything.",
+      },
+    ]);
+  }, []);
 
   return (
     <>
       <h1 className="heading">AI Chat Bot</h1>
       <div className="chatbot_container">
-        <div className="chatbot_response_container">
-          {/* map to show the data from the response array state */}
+        <div className="chatbot_response_container" aria-live="polite">
           {response?.map((res, index) => (
             <div key={index} className="response">
-              <p className="chatbot_prompt">
-              {res.prompt}
-              </p>
-              <p className="chatbot_response">
-               {res.response}
-              </p>
+              <p className="chatbot_prompt">{res.prompt}</p>
+              <p className="chatbot_response">{res.response}</p>
             </div>
           ))}
+
+          <div ref={chatEndRef}></div>
 
           {loading && (
             <SyncLoader
@@ -94,15 +99,19 @@ function App() {
           <input
             type="text"
             name="input"
-            placeholder="enter your questions"
+            placeholder="Enter your questions"
             className="input"
             value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                fetchChatResponseFromGemini();
+              }
             }}
           />
           <button type="button" onClick={fetchChatResponseFromGemini}>
-            submit
+            Submit
           </button>
         </div>
       </div>
